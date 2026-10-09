@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  analyze_and_test:
+    name: Analyze & test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Check formatting (informational)
+        run: dart format --output=none --set-exit-if-changed . || true
+
+      - name: Static analysis
+        run: flutter analyze --no-fatal-infos
+
+      - name: Unit and widget tests (with coverage)
+        run: flutter test --coverage
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/lcov.info
+
+  build_apk:
+    name: Build demo APK
+    needs: analyze_and_test
+    runs-on: ubuntu-latest
+    # Le build APK est un bonus de demonstration : son echec ne doit pas
+    # rendre le workflow rouge.
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Generate Android platform files if missing
+        run: |
+          if [ ! -d android ]; then
+            flutter create . --platforms=android --project-name recipes_app
+          fi
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build release APK
+        run: flutter build apk --release
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: recipes-app-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+
+# Les tests d'integration (integration_test/) necessitent un appareil, un
+# emulateur ou un navigateur : ils sont lances localement
+# (flutter test integration_test/app_test.dart -d chrome), pas dans ce workflow.
